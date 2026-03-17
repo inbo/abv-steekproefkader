@@ -21,6 +21,9 @@
 *.shx
 *.sty
 *.tex
+*.tiff
+*.tiff.aux.xml
+*.tfw
 *.xls*
 *_cache
 *_files
