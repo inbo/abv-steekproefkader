@@ -5,6 +5,8 @@ type <- "niv1_estat"
 year <- 2022
 version <- "v12"
 
+weight_file <- "data/gaussian_weights.txt"
+
 working_dir <- "data/temp"
 dir.create(working_dir, showWarnings = FALSE)
 output_dir <- "data/dominant"
@@ -27,6 +29,9 @@ definitions <- list(
   inlet = rbind(c(0, 9, 1), c(9, 10, 32500), c(10, 12, 1)),
   dune = rbind(c(0, 10, 1), c(10, 11, 32500), c(11, 12, 1))
 )
+
+read.table(weight_file) |>
+  nrow() -> window_size
 
 for (landuse in names(definitions)) {
   # convert the land use raster to a binary raster for the land use of interest
