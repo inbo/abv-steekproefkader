@@ -2,7 +2,13 @@ description: Configuration file for checklist::check_pkg()
 package: no
 allowed:
   warnings: []
-  notes: []
+  notes:
+  - motivation: No DOI yet
+    value: no DOI badge found in README.md
+  - motivation: Version still to be defined
+    value: No version information found in README.md
+  - motivation: Website not yet relevant
+    value: no website badge found in README.md
 required:
 - CITATION
 - checklist
@@ -17,3 +23,4 @@ spelling:
   ignore:
   - .github
   - LICENSE.md
+pak: []

@@ -1,0 +1,36 @@
+{
+  "license": "CC BY 4.0",
+  "access_right": "open",
+  "title": "Sampling framework for the common breeding bird survey in Flanders (Belgium)",
+  "description": "<p>We based the sampling framework on the land use maps.<\/p>",
+  "keywords": [
+    "ABV",
+    "birds"
+  ],
+  "upload_type": "software",
+  "language": "eng",
+  "contributors": [
+    {
+      "name": "Onkelinx, Thierry",
+      "affiliation": "Research Institute for Nature and Forest (INBO)",
+      "orcid": "0000-0001-8804-4216",
+      "type": "contactperson"
+    },
+    {
+      "name": "Research Institute for Nature and Forest (INBO)",
+      "type": "rightsholder"
+    }
+  ],
+  "creators": [
+    {
+      "name": "Onkelinx, Thierry",
+      "affiliation": "Research Institute for Nature and Forest (INBO)",
+      "orcid": "0000-0001-8804-4216"
+    }
+  ],
+  "communities": [
+    {
+      "identifier": "inbo"
+    }
+  ]
+}
