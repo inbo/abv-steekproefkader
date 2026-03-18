@@ -1,9 +1,9 @@
 library(qgisprocess)
 qgis_configure(use_cached_data = TRUE)
 
-type <- "niv1_estat"
+type <- "niv1-estat"
 year <- 2022
-version <- "v12"
+version <- "v1-2"
 
 weight_file <- "data/gaussian_weights.txt"
 
@@ -12,7 +12,7 @@ dir.create(working_dir, showWarnings = FALSE)
 output_dir <- "data/dominant"
 dir.create(output_dir, showWarnings = FALSE)
 
-source_raster <- sprintf("data/ecosystem/%s_%i_%s.tiff", type, year, version)
+source_raster <- sprintf("data/ecosystem/%s-%s-%i.tiff", type, version, year)
 stopifnot(file.exists(source_raster))
 
 # definitions for reclassification and focal processing
@@ -36,7 +36,7 @@ read.table(weight_file) |>
 for (landuse in names(definitions)) {
   # convert the land use raster to a binary raster for the land use of interest
   landuse_subset <- sprintf(
-    "%s/%s_%s_%s_%i_subset.tiff",
+    "%s/%s-%s-%s-%i-subset.tiff",
     working_dir,
     landuse,
     type,
@@ -60,7 +60,7 @@ for (landuse in names(definitions)) {
   }
   # calculate the focal average for the land use of interest
   landuse_focal <- sprintf(
-    "%s/%s_%s_%s_%i_focal.tiff",
+    "%s/%s-%s-%s-%i-focal.tiff",
     working_dir,
     landuse,
     type,
@@ -84,14 +84,14 @@ for (landuse in names(definitions)) {
 
 # calculate dominant landuse
 dominant_amount <- sprintf(
-  "%s/dominant_amount_%s_%s_%i.tiff",
+  "%s/dominant-amount-%s-%s-%i.tiff",
   output_dir,
   type,
   version,
   year
 )
 dominant_which <- sprintf(
-  "%s/dominant_which_%s_%s_%i.tiff",
+  "%s/dominant-which-%s-%s-%i.tiff",
   output_dir,
   type,
   version,
@@ -101,7 +101,7 @@ qgis_run_algorithm(
   algorithm = "grass:r.mapcalc.simple",
   output = dominant_amount,
   a = sprintf(
-    "%s/%s_%s_%s_%i_focal.tiff",
+    "%s/%s-%s-%s-%i-focal.tiff",
     working_dir,
     names(definitions)[1],
     type,
@@ -109,7 +109,7 @@ qgis_run_algorithm(
     year
   ),
   b = sprintf(
-    "%s/%s_%s_%s_%i_focal.tiff",
+    "%s/%s-%s-%s-%i-focal.tiff",
     working_dir,
     names(definitions)[2],
     type,
@@ -122,7 +122,7 @@ qgis_run_algorithm(
   algorithm = "grass:r.mapcalc.simple",
   output = dominant_which,
   a = sprintf(
-    "%s/%s_%s_%s_%i_focal.tiff",
+    "%s/%s-%s-%s-%i-focal.tiff",
     working_dir,
     names(definitions)[1],
     type,
@@ -130,7 +130,7 @@ qgis_run_algorithm(
     year
   ),
   b = sprintf(
-    "%s/%s_%s_%s_%i_focal.tiff",
+    "%s/%s-%s-%s-%i-focal.tiff",
     working_dir,
     names(definitions)[2],
     type,
@@ -146,7 +146,7 @@ for (i in tail(seq_along(definitions), -2)) {
     algorithm = "grass:r.mapcalc.simple",
     output = dominant_which,
     a = sprintf(
-      "%s/%s_%s_%s_%i_focal.tiff",
+      "%s/%s-%s-%s-%i-focal.tiff",
       working_dir,
       landuse,
       type,
@@ -162,7 +162,7 @@ for (i in tail(seq_along(definitions), -2)) {
     output = dominant_amount,
     a = dominant_amount,
     b = sprintf(
-      "%s/%s_%s_%s_%i_focal.tiff",
+      "%s/%s-%s-%s-%i-focal.tiff",
       working_dir,
       landuse,
       type,
@@ -173,7 +173,7 @@ for (i in tail(seq_along(definitions), -2)) {
   )
 }
 dominant_strata <- sprintf(
-  "%s/dominant_strata_%s_%s_%i.tiff",
+  "%s/dominant-strata-%s-%s-%i.tiff",
   output_dir,
   type,
   version,

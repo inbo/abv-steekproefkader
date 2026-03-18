@@ -1,7 +1,13 @@
 description: Configuration file for checklist::check_pkg()
 package: no
 allowed:
-  warnings: []
+  warnings:
+  - motivation: Tiff files are raster data
+    value: |-
+      Media files found outside of a `media` folder:
+        data/ecosystem/niv1-estat-v1-2-2016.tiff
+        data/ecosystem/niv1-estat-v1-2-2019.tiff
+        data/ecosystem/niv1-estat-v1-2-2022.tiff
   notes:
   - motivation: No DOI yet
     value: no DOI badge found in README.md
