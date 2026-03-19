@@ -1,0 +1,116 @@
+---
+title: "Draft of the proposed sampling framework"
+format: html
+execute:
+  echo: false
+---
+
+
+```{r}
+#| label: setup
+library(here)
+library(knitr)
+library(terra)
+library(tidyverse)
+dominant <- here("data", "dominant")
+type <- "niv1-estat"
+version <- "v1-2"
+year <- 2022
+```
+
+- weighted fraction of every level 1 class per pixel
+  - in a circle with radius of 200 m around the pixel
+  - bivariate gaussian kernel, sigma = 7.77
+      - 99% of the density is within 200 m
+      - larger weights for closer pixels, smaller weights for more distant pixels
+- lump `heather` and `sparse vegetation` into a single `heather` class
+- lump `river`, `lake` and `inlet` into a single `water` class
+- determine the dominant class
+  - `no minimum`: the dominant class is the one with the highest weighted fraction
+  - `third`: the dominant class is the one with the highest weighted fraction, but only if it is at least 1/3 of the total weighted fraction
+  - `half`: the dominant class is the one with the highest weighted fraction, but only if it is at least 1/2 of the total weighted fraction
+  - `twothird`: the dominant class is the one with the highest weighted fraction, but only if it is at least 2/3 of the total weighted fraction
+- `water` is handled differently, because it is a special case
+  - `open water`: the dominant class is `water`, and the weighted fraction of `water` is greater than 1/3 of the total weighted fraction.
+    These pixels are often not accessible for sampling.
+  - `water edge`: the dominant class is `water`, but the weighted fraction of `water` is less than or equal to 1/3 of the total weighted fraction
+- Assign the remaining pixels to the `heterogeneous` stratum, because they are not dominated by any class, according to the definition of the dominant class.
+
+```{r}
+#| label: read-map
+sprintf("%s/dominant-strata-%s-%s-%i.tiff", dominant, type, version, year) |>
+  rast() |>
+  as.vector() |>
+  table() -> tab
+data.frame(
+  code = names(tab),
+  dominant = floor(as.integer(names(tab)) / 10),
+  fraction = as.integer(names(tab)) - 10 * floor(as.integer(names(tab)) / 10),
+  cells = as.vector(tab)
+) |>
+  mutate(
+    no_minimum = case_match(
+      .data$dominant,
+      1 ~ "urban",
+      2 ~ "cropland",
+      3 ~ "grasland",
+      4 ~ "forest",
+      c(5, 6) ~ "heather",
+      7 ~ "wetland",
+      c(8, 9, 10) ~ "water",
+      c(11) ~ "dune"
+    ),
+    no_minimum = ifelse(
+      .data$no_minimum == "water",
+      ifelse(.data$fraction <= 1, "water edge", "open water"),
+      .data$no_minimum
+    ),
+    third = ifelse(
+      .data$fraction < 1 & !grepl("water", .data$no_minimum),
+      "heterogeneous",
+      .data$no_minimum
+    ),
+    half = ifelse(
+      .data$fraction < 2 & !grepl("water", .data$no_minimum),
+      "heterogeneous",
+      .data$no_minimum
+    ),
+    twothird = ifelse(
+      .data$fraction < 3 & !grepl("water", .data$no_minimum),
+      "heterogeneous",
+      .data$no_minimum
+    )
+  ) -> strata
+```
+
+
+```{r}
+#| label: tbl-strata
+#| tbl-cap: "Number of pixels in each stratum, for different definitions of the
+#|  dominant class.
+#|  The `heterogeneous` stratum contains pixels where the dominant class is not
+#|  dominant enough, according to the definition of the dominant class."
+strata |>
+  group_by(stratum = .data$no_minimum) |>
+  summarise(cells = sum(.data$cells), type = "no minimum") |>
+  bind_rows(
+    data.frame(stratum = "heterogeneous", cells = 0, type = "no minimum"),
+    strata |>
+      group_by(stratum = .data$third) |>
+      summarise(cells = sum(.data$cells), type = "third"),
+    strata |>
+      group_by(stratum = .data$half) |>
+      summarise(cells = sum(.data$cells), type = "half"),
+    strata |>
+      group_by(stratum = .data$twothird) |>
+      summarise(cells = sum(.data$cells), type = "twothird")
+  ) |>
+  mutate(
+    cells = sprintf("%.2f%%", 100 * .data$cells / sum(strata$cells)),
+    stratum = factor(.data$stratum) |>
+      reorder(.data$cells, FUN = max, decreasing = TRUE)
+  ) |>
+  pivot_wider(names_from = "type", values_from = "cells") |>
+  arrange(.data$stratum) |>
+  kable()
+```
