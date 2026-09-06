@@ -10,8 +10,10 @@
 *.html
 *.mdb
 *.pdf
+*.qgz
 *.shp*
 *.shx
+*.sqlite
 *.sty
 *.tex
 *.tfw
