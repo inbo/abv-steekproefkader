@@ -13,8 +13,9 @@ stopifnot(file.exists(source_raster))
 # Use the source raster as the geometry template so that the output has exactly
 # the same extent, resolution and CRS.
 template <- rast(source_raster)
-n_col <- ncol(template)
-n_row <- nrow(template)
+extra <- 1000
+n_col <- ncol(template) + 2 * extra / res(template)[1]
+n_row <- nrow(template) + 2 * extra / res(template)[2]
 xmin(template) |>
   c(xmax(template)) |>
   mean() -> mean_x
@@ -39,8 +40,25 @@ col_from_x1 <- function(x1) x1 + col_mid - mid_index
 row_from_x2 <- function(x2) row_mid + mid_index - x2
 
 # `ranking` has a maximum of 4^15 which still fits in a signed 32 bit integer.
-output <- rast(template)
-chunk_rows <- 512
+
+db <- connect_db("data/grts.sqlite")
+c(xmin(template), xmax(template)) |>
+  rbind(
+    c(ymin(template), ymax(template))
+  ) |>
+  add_level(grtsdb = db, level = 15, cellsize = res(template)[1])
+compact_db(db)
+
+output <- rast(
+  nrows = n_row,
+  ncols = n_col,
+  crs = crs(template),
+  xmin = xmin(template) - extra,
+  xmax = xmax(template) + extra,
+  ymin = ymin(template) - extra,
+  ymax = ymax(template) + extra,
+  names = "ranking"
+)
 
 writeStart(
   output,
@@ -51,16 +69,9 @@ writeStart(
   gdal = c("COMPRESS=DEFLATE", "BIGTIFF=IF_NEEDED")
 )
 
-db <- connect_db("data/grts.sqlite")
-c(xmin(template), xmax(template)) |>
-  rbind(
-    c(ymin(template), ymax(template))
-  ) |>
-  add_level(grtsdb = db, level = 15, cellsize = res(template)[1])
-compact_db(db)
-
+chunk_rows <- 2^8
 for (row_start in seq(1, n_row, by = chunk_rows)) {
-  message(row_start, " ")
+  message(sprintf("%.2f%%", 100 * row_start / n_row))
   row_end <- min(row_start + chunk_rows - 1, n_row)
   chunk <- rep(NA_integer_, (row_end - row_start + 1) * n_col)
   # `x2` decreases with increasing row number, hence the reversed bounds.
