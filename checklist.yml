@@ -2,6 +2,9 @@ description: Configuration file for checklist::check_pkg()
 package: no
 allowed:
   warnings:
+  - motivation: allow posit settings
+    value: A project should only have `data`, `inst`, `media`, `output`, `renv` and
+      `source` as main folder.
   - motivation: Tiff files are raster data
     value: |-
       Media files found outside of a `media` folder:
@@ -9,11 +12,7 @@ allowed:
         data/ecosystem/niv1-estat-v1-2-2019.tiff
         data/ecosystem/niv1-estat-v1-2-2022.tiff
   notes:
-  - motivation: No DOI yet
-    value: no DOI badge found in README.md
-  - motivation: Version still to be defined
-    value: No version information found in README.md
-  - motivation: Website not yet relevant
+  - motivation: Website not ready
     value: no website badge found in README.md
 required:
 - CITATION
@@ -30,3 +29,4 @@ spelling:
   - .github
   - LICENSE.md
 pak: []
+gha_install: []

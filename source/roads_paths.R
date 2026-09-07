@@ -33,19 +33,19 @@ osm_pbf <- oe_download(
 # to be used to clip the Belgian OSM data
 # only relevant for detecting the large region without roads
 waterlike <- c(
-  "natural" = 'water',
-  "natural" = 'wetland',
-  "landuse" = 'aquaculture',
-  "landuse" = 'bassin',
-  "landuse" = 'harbour',
-  "landuse" = 'lock_gate',
-  "landuse" = 'reservoir',
-  "landuse" = 'water_storage',
-  "leisure" = 'marina',
-  "leisure" = 'swimming_pool',
-  "leisure" = 'slipway',
-  "leisure" = 'fishing',
-  "leisure" = 'water_park'
+  "natural" = "water",
+  "natural" = "wetland",
+  "landuse" = "aquaculture",
+  "landuse" = "bassin",
+  "landuse" = "harbour",
+  "landuse" = "lock_gate",
+  "landuse" = "reservoir",
+  "landuse" = "water_storage",
+  "leisure" = "marina",
+  "leisure" = "swimming_pool",
+  "leisure" = "slipway",
+  "leisure" = "fishing",
+  "leisure" = "water_park"
 )
 # extract the relevant water polygons from OSM
 oe_vectortranslate(
@@ -57,7 +57,11 @@ oe_vectortranslate(
   setNames("INPUT") |>
   qgis_run_algorithm_p(
     algorithm = "native:extractbyexpression",
-    EXPRESSION = sprintf("(\"%s\" = '%s')", names(waterlike), waterlike) |>
+    EXPRESSION = sprintf(
+      "(\"%s\" = '%s')", # nolint: quotes_lintr
+      names(waterlike),
+      waterlike
+    ) |>
       paste(collapse = " OR "),
     OUTPUT = "data/waterlike.gpkg",
     FAIL_OUTPUT = NULL
