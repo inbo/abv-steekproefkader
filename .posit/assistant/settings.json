@@ -1,0 +1,15 @@
+{
+  "permission": {
+    "skill": {
+      "r-project-code": "allow"
+    },
+    "edit": {
+      "*.R": "allow"
+    },
+    "bash": {
+      "air *": "allow",
+      "Rscript *": "allow",
+      "tail *": "allow"
+    }
+  }
+}

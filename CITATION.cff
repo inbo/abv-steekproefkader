@@ -15,7 +15,8 @@ contact:
   affiliation: Research Institute for Nature and Forest (INBO)
   orcid: 0000-0001-8804-4216
 doi: ~
-license: CC BY 4.0
+license: CC-BY-4.0
 repository-code: https://github.com/inbo/abv-steekproefkader/
 type: software
 abstract: "We based the sampling framework on the land use maps."
+version: '0.1'
