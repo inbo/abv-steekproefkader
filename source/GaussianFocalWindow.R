@@ -8,13 +8,13 @@ library(qgisprocess)
 library(sf)
 
 src_dir <- "./data/ecosystem/"
-data_dir <- "./data/ecosystem/flanders/"
+data_dir <- "./data/ecosystem/"
 
-# Beperking geheugen gebruik, anders kon ik het script niet runnen
+# Beperken van het geheugen gebruik, anders kon ik het script niet runnen
 terraOptions(
   memfrac = 0.35,
   progress = 10,
-  tempdir = "./data/ecosystem/terratemp/"
+  tempdir = "./data/Temp/"
 )
 
 dir.create(data_dir, showWarnings = FALSE, recursive = TRUE)
@@ -32,22 +32,20 @@ rm(r_template)
 gc()
 
 #todo: change the way kernel configs is read
-#it was a list because i was testing different parameters and running all at once
+# het was origineel een lijst omdat ik parameters aan het testen was
 kernel_configs <- list(
   list(
     label = "gauss_100m",
-    focal_subdir = "Gauss100m/focal_intermediary/",
+    focal_subdir = "focal_intermediary/",
     kernel_mat = kernel_100m_B
   )
 )
 
-for (cfg in kernel_configs) {
-  dir.create(
-    paste0(data_dir, cfg$focal_subdir),
-    showWarnings = FALSE,
-    recursive = TRUE
-  )
-}
+dir.create(
+  paste0(data_dir, "focal_intermediary"),
+  showWarnings = FALSE,
+  recursive = TRUE
+)
 
 eco_dict_short <- c(
   "101" = "urbaan",
@@ -134,11 +132,11 @@ flanders_layers <- flanders_layers[[layer_names[
 layer_names <- names(flanders_layers)
 
 # Grouping the ecosystems
-
 eco_layers <- sapply(eco_dict_short[layer_names], function(x) {
   which(eco_order == x)
 }) |>
   as.vector()
+
 grouped_file <- paste0(data_dir, "grouped_ecosystems_temp.tif")
 layer_names <- eco_order[unique(eco_layers)]
 
@@ -173,6 +171,7 @@ gc()
 # Could not run the focal window on my laptop
 # Below is gemini code in order to run it with tiling
 # If i do it without tiling my R session crashes
+# Dit zou ook kunnen met qgisprocess maar indien ik het proces laat lopen over heel vlaanderen dan bleef ik crashes krijgen
 
 MAX_ROWS <- 2000
 MAX_COLS <- 2000
@@ -384,7 +383,6 @@ for (cfg in kernel_configs) {
   }
 
   # stack layers and check
-
   message(sprintf(
     "[%s] [%s] Stacking all focal layers...",
     Sys.time(),
@@ -429,7 +427,7 @@ for (cfg in kernel_configs) {
   # anders zouden we geen strata krijgen op de randen.
   writeRaster(
     proportions,
-    paste0(focal_dir, "focal_all_proportions_edgecorrected.tif"),
+    paste0(data_dir, "focal_all_proportions_edgecorrected.tif"),
     overwrite = TRUE,
     wopt = list(
       gdal = c(
@@ -442,7 +440,7 @@ for (cfg in kernel_configs) {
     )
   )
 
-  plot_file <- paste0(focal_dir, "proportions_verification_edgecorrected.png")
+  plot_file <- paste0(data_dir, "proportions_verification_edgecorrected.png")
   png(plot_file, width = 1920, height = 1080, res = 150)
   plot(
     proportions[[1]],
@@ -485,7 +483,7 @@ message(sprintf(
   "[%s] Starting Categorical Classification (>50%% rule)...",
   Sys.time()
 ))
-data_dir <- "./data/"
+
 proportions <- rast(paste0(
   data_dir,
   "focal_all_proportions_edgecorrected.tif"
@@ -505,7 +503,7 @@ grasland_id <- which(names(proportions) == "grasland")
 # OPTION1: simplest method
 # If the highest proportion is > 0.5, it's the dominanting class otherwise it's mixed
 final_class <- ifel(max_prop_val > 0.5, dom_class_idx, mixed_id)
-focal_dir <- paste0(data_dir, "Gauss100m")
+
 
 writeRaster(
   final_class,
