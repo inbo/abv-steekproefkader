@@ -168,10 +168,13 @@ total_layers <- nlyr(flanders_layers)
 rm(flanders_layers, r)
 gc()
 
-# Could not run the focal window on my laptop
-# Below is gemini code in order to run it with tiling
-# If i do it without tiling my R session crashes
+# Onderstaande code is gemini code.
 # Dit zou ook kunnen met qgisprocess maar indien ik het proces laat lopen over heel vlaanderen dan bleef ik crashes krijgen
+# Dus heb ik het op deze manier moeten uitvoeren.
+# Korte uitleg:
+# we gebruiken tiles van een bepaalde grootte, met een overlap met dezelfde grootte als het focal window
+# de overlap is nodig aangezien we een focal window lopen over de kaart.
+# na de berekening croppen we de tiles en voegen we al de tiles samen toe tot 1 geheel.
 
 MAX_ROWS <- 2000
 MAX_COLS <- 2000
@@ -504,7 +507,6 @@ grasland_id <- which(names(proportions) == "grasland")
 # If the highest proportion is > 0.5, it's the dominanting class otherwise it's mixed
 final_class <- ifel(max_prop_val > 0.5, dom_class_idx, mixed_id)
 
-
 writeRaster(
   final_class,
   paste0(data_dir, "gauss100m.tif"),
@@ -513,71 +515,7 @@ writeRaster(
   wopt = list(gdal = c("COMPRESS=DEFLATE", "TILED=YES"))
 )
 
-#  OPTION 2
-p_landbouw <- proportions[[landbouw_id]]
-p_grasland <- proportions[[grasland_id]]
-p_comb <- p_landbouw + p_grasland
-
-# criteria:
-is_agri_mix <- (p_comb > 0.5) &
-  (p_landbouw >= 0.15) &
-  (p_grasland >= 0.15) &
-  (max_prop_val <= 0.5)
-
-final_class <- ifel(
-  max_prop_val > 0.5,
-  dom_class_idx,
-  ifel(is_agri_mix, landbouw_grasland_id, mixed_id)
-)
-
-writeRaster(
-  final_class,
-  paste0(data_dir, "gauss100m_landbouwgraslandmix.tif"),
-  overwrite = TRUE,
-  datatype = "INT1U",
-  wopt = list(gdal = c("COMPRESS=DEFLATE", "TILED=YES"))
-)
-
-
-# OPTION 3
-p_landbouw <- proportions[[landbouw_id]]
-p_grasland <- proportions[[grasland_id]]
-p_comb <- p_landbouw + p_grasland
-
-# criteria (in total three strata):
-# - agriculture  if above 0.5
-# - akker if akker is more than 2/3 of p_comb
-# - grasland if grasland is more than 2/3 of p_comb
-is_agri <- p_comb > 0.5
-is_akker <- is_agri & (p_landbouw > (2 / 3) * p_comb)
-is_grasland <- is_agri & (p_grasland > (2 / 3) * p_comb)
-is_agri_mix <- is_agri & !is_akker & !is_grasland
-
-
-final_class <- ifel(
-  is_akker,
-  landbouw_id,
-  ifel(
-    is_grasland,
-    grasland_id,
-    ifel(
-      is_agri_mix,
-      landbouw_grasland_id,
-      ifel(max_prop_val > 0.5, dom_class_idx, mixed_id)
-    )
-  )
-)
-
-writeRaster(
-  final_class,
-  paste0(data_dir, "gauss100m_landbouwgraslandmix_option3.tif"),
-  overwrite = TRUE,
-  datatype = "INT1U",
-  wopt = list(gdal = c("COMPRESS=DEFLATE", "TILED=YES"))
-)
-
-
-# OPTION 4
+# OPTION 2
 p_landbouw <- proportions[[landbouw_id]]
 p_grasland <- proportions[[grasland_id]]
 p_comb <- p_landbouw + p_grasland
@@ -595,93 +533,8 @@ final_class <- ifel(
 
 writeRaster(
   final_class,
-  paste0(data_dir, "gauss100m_landbouwgraslandmix_option4.tif"),
+  paste0(data_dir, "gauss100m_landbouwgrasland_option.tif"),
   overwrite = TRUE,
   datatype = "INT1U",
   wopt = list(gdal = c("COMPRESS=DEFLATE", "TILED=YES"))
 )
-
-
-#  OPTION 5 LOGIC
-p_landbouw <- proportions[[landbouw_id]]
-p_grasland <- proportions[[grasland_id]]
-p_comb <- p_landbouw + p_grasland
-
-# criteria (in total three strata):
-# - agriculture  if above 0.5
-# - akker if akker is more than 1/3
-# - grasland if grasland is more than 1/3
-is_agri <- p_comb > 0.5
-is_akker <- is_agri & (p_landbouw > (1 / 3))
-is_grasland <- is_agri & (p_grasland > (1 / 3))
-is_agri_mix <- is_agri & !is_akker & !is_grasland
-
-
-final_class <- ifel(
-  is_akker,
-  landbouw_id,
-  ifel(
-    is_grasland,
-    grasland_id,
-    ifel(
-      is_agri_mix,
-      landbouw_grasland_id,
-      ifel(max_prop_val > 0.5, dom_class_idx, mixed_id)
-    )
-  )
-)
-
-writeRaster(
-  final_class,
-  paste0(data_dir, "gauss100m_landbouwgraslandmix_option5.tif"),
-  overwrite = TRUE,
-  datatype = "INT1U",
-  wopt = list(gdal = c("COMPRESS=DEFLATE", "TILED=YES"))
-)
-
-# Compare the n_cells for each strata
-strata <- c(
-  "bebouwd",
-  "bebouwd_groen",
-  "water",
-  "akker",
-  "grasland",
-  "bos",
-  "duinen/heide",
-  "moeras",
-  "estuarium",
-  "getijdensgebied/overgangswater",
-  "gemengd",
-  "akker_grasland_mix"
-)
-
-option3 <- freq(rast(paste0(
-  data_dir,
-  "gauss100m_landbouwgraslandmix_option3.tif"
-)))
-option5 <- freq(rast(paste0(
-  data_dir,
-  "gauss100m_landbouwgraslandmix_option5.tif"
-)))
-
-
-option4 <- freq(rast(paste0(
-  data_dir,
-  "gauss100m_landbouwgraslandmix_option4.tif"
-)))
-original <- freq(rast(paste0(data_dir, "gauss100m.tif")))
-
-
-option3$strata <- strata
-option4$strata <- strata[1:11]
-option5$strata <- strata
-original$strata <- strata[1:11]
-
-colnames(option3) <- c("layer", "value", "count_3", "strata")
-colnames(option4) <- c("layer", "value", "count_4", "strata")
-colnames(option5) <- c("layer", "value", "count_5", "strata")
-colnames(original) <- c("layer", "value", "count_original", "strata")
-
-left_join(option3, option4, by = c("strata", "layer", "value")) |>
-  left_join(option5, by = c("strata", "layer", "value")) |>
-  left_join(original, by = c("strata", "layer", "value"))
