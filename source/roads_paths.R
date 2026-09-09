@@ -213,7 +213,7 @@ road_path |>
   qgis_run_algorithm_p(
     algorithm = "native:buffer",
     DISTANCE = 10,
-    DISSOLVE = TRUE,
+    DISSOLVE = FALSE,
     END_CAP_STYLE = 0,
     JOIN_STYLE = 0,
     MITER_LIMIT = 2,
@@ -221,6 +221,15 @@ road_path |>
     OUTPUT = "data/road_path_small_buffer.gpkg",
     SEPARATE_DISJOINT = TRUE
   ) -> small_buffer
+qgis_run_algorithm_p(small_buffer, algorithm = "native:createspatialindex")
+qgis_run_algorithm_p(
+  algorithm = "grass:r.mapcalc.simple",
+  a = "data/strata.tif",
+  expression = paste("A ==", c(1, 2, 4, 5, 6, 7, 8, 11), collapse = " || ") |>
+    sprintf(fmt = "if(%s, A)"),
+  OUTPUT = qgis_tmp_vector()
+)
+
 # create a wider buffer (200 meters) to detect locations that are not observable
 # from the roads
 road_path |>
