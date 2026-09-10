@@ -1,0 +1,533 @@
+---
+title: "ABV 2.0 — Benodigde steekproefgrootte per soort"
+subtitle: "Oude vs nieuwe strata · waarom zeldzame habitats de getallen opblazen · wat designkeuzes veranderen"
+author: "INBO — ABV 2.0 verkenning"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Toon code"
+    theme: cosmo
+lang: nl
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+## benodigde packages: dplyr tidyr purrr ggplot2 scales knitr ggrepel
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(scales)
+library(knitr)
+
+params <- list(n_target = 285, rotatie = 3, data_dir = "data")
+
+fmt <- label_number(big.mark = ".", decimal.mark = ",")
+fmt2 <- label_number(accuracy = 0.01, big.mark = ".", decimal.mark = ",")
+theme_set(theme_minimal(base_size = 11))
+
+f <- function(x) file.path(params$data_dir, x)
+
+pts <- readRDS(
+  ("C:/Users/stijn_vandenbulcke/Documents/abv/abv-steekproefkader/source/Nieuwe map/PowerAnalyse/Data/abv2_point_classes.rds")
+) # point, square, stratum_old, new_stratum
+rel <- readRDS(
+  ("C:/Users/stijn_vandenbulcke/Documents/abv/abv-steekproefkader/source/Nieuwe map/PowerAnalyse/Data/abv2_relevance.rds")
+) # species, point  (relevante punten per soort)
+rst <- readRDS(
+  ("C:/Users/stijn_vandenbulcke/Documents/abv/abv-steekproefkader/source/Nieuwe map/PowerAnalyse/Data/abv2_raster_freq.rds")
+) # new_stratum, cellen (freq over heel Vlaanderen)
+
+# oude stratumgroottes in Vlaanderen (steekproefkader, Vermeersch et al. 2018)
+oud_frame <- c(
+  "Landbouw" = 6311,
+  "Urbaan" = 416,
+  "Bos" = 319,
+  "Suburbaan" = 201,
+  "Heide en duin" = 199,
+  "Moeras en water" = 137
+)
+```
+
+pts bevat de punten, squares, oude stratum, nieuwe stratum en longitude+latitude
+```{r}
+head(pts)
+```
+
+rst bevat hoeveel 10x10m pixels ieder stratum bevat in vlaanderen
+```{r}
+head(rst)
+```
+
+
+rel bevat de locaties van iedere species, genomen uit het dataframe van de modellen (hierdoor mogelijks vertekening van alle punten?)
+```{r}
+head(rel)
+```
+
+## methodologie
+
+Resultaat poweranalyse:
+De poweranalyse zegt: een vogel met gemiddelde densiteit en gemiddelde variabiliteit tussen de meetlocaties vereist `r params$N_target` relevante punten. Dit zijn unieke locaties waar de vogel aanwezig is, opnieuw bezocht volgens een 3 jarige rotatie, om een trend van 24% over 24 jaar aan te tonen met 90% power by alpha = 0.1. 
+Een echt meetnet bezoekt echter punten overal in Vlaanderen, en slechts een fractie daarvan is voor een gegeven
+soort relevant (de soort wordt er minstens 1 maal waargenomen; volgens de originele ABV analyse regels). De benodigde 
+steekproefgrootte voor een specifieke vogel volgt dan uit
+
+$$
+N = \frac{N^*}{\bar p}, \qquad \bar p = \sum_s a_s\,\psi_s,
+$$
+$\bar{p}$ is de gewogen kans dat een willekeurig punt in vlaanderen relevant is voor de soort
+
+$\psi_s$ is het aandeel relevante punten binnen stratum/klasse $s$ (geschat uit de
+bestaande ABV-punten) en $a_s$ het aantal locaties van het stratum $s$. 
+
+Bijvoorbeeld een bosvogel dat in 20% van de gemeten bospunten gezien wordt en bos is 50% van vlaanderen dan is $\bar{p}$ gelijk aan 0.25. Dan moeten we onze willekeurige punten maal vier doen om aan 285 relevante punten te komen. 
+
+
+Dit document rekent $N$ per soort uit voor een de volgende designs
+
+- sampling volgens de strata oppervlakte
+- sampling waarbij de strata gelijke verdeling krijgen
+
+# ABV kaart vergelijking
+
+Vergelijking nieuwe en oude kaarten
+
+```{r legacy-bias}
+vergelijking <- rst %>%
+  mutate(aandeel_vlaanderen = cellen / sum(cellen)) %>%
+  left_join(
+    pts %>% count(new_stratum, name = "n_punten"),
+    by = "new_stratum"
+  ) %>%
+  mutate(
+    aandeel_punten = n_punten / sum(n_punten),
+    ratio = aandeel_punten / aandeel_vlaanderen
+  ) %>%
+  arrange(desc(ratio))
+
+vergelijking %>%
+  mutate(
+    across(c(aandeel_vlaanderen, aandeel_punten), ~ round(.x, 4)),
+    ratio = round(ratio, 2)
+  ) %>%
+  kable(
+    col.names = c(
+      "Nieuwe klasse",
+      "cellen (raster)",
+      "aandeel Vlaanderen",
+      "n legacy-punten",
+      "aandeel legacy-punten",
+      "over/onder"
+    )
+  )
+```
+
+De verhouding van de legacy-punten is niet gelijk aan de verhouding van de strata. Aangezien er gekozen was voor overbemonstering in het oude framework. In ABV2.0 zal dit waarschijnlijk ook nodig zijn om genoeg punten te krijgen in zeldzamere strata. We zullen niet de gewichten van deze tabel gebruiken als $a_s$. Het aantal legacy-punten wordt wel gebruikt als schatting for $\hat\psi_s$ binnen de strata.
+
+We sluiten de strata water, estuaria, getijdensgebieden, overgangswateren uit. We kunnen daar niet correct gaan tellen. 
+
+#  berekening relevante punten per stratum (nieuw en oud)
+
+```{r psi-tabellen}
+## effort: hoeveel legacy-punten per eenheid
+effort_nieuw <- pts %>%
+  filter(!is.na(new_stratum)) %>%
+  count(new_stratum, name = "n_punten")
+effort_oud <- pts %>%
+  distinct(point, stratum_old) %>%
+  count(stratum_old, name = "n_punten")
+
+## psi_nieuw: aandeel relevante punten per soort x nieuwe klasse
+psi_nieuw <- rel %>%
+  inner_join(
+    pts %>% distinct(point, new_stratum) %>% filter(!is.na(new_stratum)),
+    by = "point"
+  ) %>%
+  distinct(species, new_stratum, point) %>%
+  count(species, new_stratum, name = "n_relevant") %>%
+  left_join(effort_nieuw, by = "new_stratum") %>%
+  mutate(psi = n_relevant / n_punten)
+
+## psi_oud: idem per oud stratum
+psi_oud <- rel %>%
+  left_join(pts %>% distinct(point, stratum_old), by = "point") %>%
+  distinct(species, stratum_old, point) %>%
+  count(species, stratum_old, name = "n_relevant") %>%
+  left_join(effort_oud, by = "stratum_old") %>%
+  mutate(psi = n_relevant / n_punten) |>
+  na.omit()
+
+head(psi_oud) |> kable()
+head(psi_nieuw) |> kable()
+```
+
+Interpretatie van $\hat\psi_s$: "de kans dat een punt  in stratum $s$ relevant is voor de trendanalyse van die soort"
+
+# Vergelijking
+
+
+```{r designs}
+klassen <- setdiff(
+  rst$new_stratum,
+  c("water", "estuarium", "getijdensgebied/overgangswater")
+) # land-kader
+a_prop <- rst %>%
+  filter(new_stratum %in% klassen) %>%
+  {
+    setNames(.$cellen / sum(.$cellen), .$new_stratum)
+  } # oppervlakte-aandelen (excl. water)
+
+designs_nieuw <- list(
+  "Nieuw  oppervlakte-proportioneel" = a_prop,
+  "Nieuw  gelijk over klassen" = setNames(
+    rep(1 / length(a_prop), length(a_prop)),
+    names(a_prop)
+  )
+)
+
+designs_oud <- list(
+  "Oud  frame-proportioneel" = oud_frame / sum(oud_frame),
+  "Oud  gelijk over strata (1/6)" = setNames(rep(1 / 6, 6), names(oud_frame))
+)
+
+designs <- c(
+  designs_nieuw,
+  designs_oud
+)
+
+tibble(
+  design = names(designs),
+  allocatie = sapply(designs, function(a) {
+    paste0(names(a), " ", round(a, 3), collapse = " · ")
+  })
+) %>%
+  kable(col.names = c("Design", "Allocatie-aandelen a_s"))
+```
+
+
+# proportionele allocatie
+
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(tibble)
+psi_nieuw <- rel %>%
+  inner_join(
+    pts %>% distinct(point, new_stratum) %>% filter(!is.na(new_stratum)),
+    by = "point"
+  ) %>%
+  distinct(species, new_stratum, point) %>%
+  count(species, new_stratum, name = "n_relevant") %>%
+  left_join(effort_nieuw, by = "new_stratum") %>%
+  mutate(psi = n_relevant / n_punten)
+
+psi_nieuw$a_s <- a_prop[psi_nieuw$new_stratum]
+psi_nieuw <- na.omit(psi_nieuw)
+psi_nieuw$p_prop <- psi_nieuw$psi * psi_nieuw$a_s
+psi_nieuw$p_equal <- psi_nieuw$psi * 1 / 8
+
+psi_nieuw_all <- psi_nieuw |>
+  group_by(species) |>
+  summarise(N_prop = 285 / sum(p_prop), N_equal = 285 / sum(p_equal)) |>
+  pivot_longer(
+    cols = c(N_prop, N_equal),
+    names_to = "design",
+    values_to = "N"
+  ) |>
+  group_by(design) |>
+  summarise(
+    mean = mean(N, na.rm = TRUE),
+    median = median(N, na.rm = TRUE),
+    q25 = quantile(N, 0.25, type = 7, na.rm = TRUE),
+    q75 = quantile(N, 0.75, type = 7, na.rm = TRUE),
+    n25_species = sort(N)[25],
+    n75_species = sort(N)[75]
+  ) |>
+  pivot_longer(-design, names_to = "statistic", values_to = "value") |>
+  pivot_wider(names_from = design, values_from = value)
+```
+
+
+```{r}
+psi_nieuw |>
+  ggplot(aes(x = psi, col = new_stratum)) +
+  stat_ecdf()
+
+psi_nieuw |>
+  ggplot(aes(x = 285 / p_prop, col = new_stratum)) +
+  stat_ecdf() +
+  ggtitle("285/p_prop")
+
+psi_nieuw |>
+  ggplot(aes(x = 285 / p_equal, col = new_stratum)) +
+  stat_ecdf() +
+  ggtitle("285/p_equal")
+```
+
+Probleem is dat met de nieuwe allocatie van de strata we weinig data hebben voor bijvoorbeeld moeras. Dit kan een vertekend beeld geven in vergelijking met de oude strata.
+
+Impact van moeras zal beperkt zijn aangezien de oppervlakte weinig is bij de proportionele berekening,
+mogelijks grote impact bij gelijke verdeling.
+```{r}
+klassen <- setdiff(
+  rst$new_stratum,
+  c("water", "estuarium", "getijdensgebied/overgangswater", "moeras")
+) # land-kader
+a_prop <- rst %>%
+  filter(new_stratum %in% klassen) %>%
+  {
+    setNames(.$cellen / sum(.$cellen), .$new_stratum)
+  } # oppervlakte-aandelen (excl. water)
+
+designs_nieuw <- list(
+  "Nieuw  oppervlakte-proportioneel" = a_prop,
+  "Nieuw  gelijk over klassen" = setNames(
+    rep(1 / length(a_prop), length(a_prop)),
+    names(a_prop)
+  )
+)
+
+designs_oud <- list(
+  "Oud  frame-proportioneel" = oud_frame / sum(oud_frame),
+  "Oud  gelijk over strata (1/6)" = setNames(rep(1 / 6, 6), names(oud_frame))
+)
+
+designs <- c(
+  designs_nieuw,
+  designs_oud
+)
+
+psi_nieuw <- rel %>%
+  inner_join(
+    pts %>% distinct(point, new_stratum) %>% filter(!is.na(new_stratum)),
+    by = "point"
+  ) %>%
+  distinct(species, new_stratum, point) %>%
+  count(species, new_stratum, name = "n_relevant") %>%
+  left_join(effort_nieuw, by = "new_stratum") %>%
+  mutate(psi = n_relevant / n_punten)
+
+psi_nieuw$a_s <- a_prop[psi_nieuw$new_stratum]
+psi_nieuw <- na.omit(psi_nieuw)
+psi_nieuw$p_prop <- psi_nieuw$psi * psi_nieuw$a_s
+psi_nieuw$p_equal <- psi_nieuw$psi * 1 / 7
+
+psi_nieuw_no_moeras <- psi_nieuw |>
+  group_by(species) |>
+  summarise(N_prop = 285 / sum(p_prop), N_equal = 285 / sum(p_equal)) |>
+  pivot_longer(
+    cols = c(N_prop, N_equal),
+    names_to = "design",
+    values_to = "N"
+  ) |>
+  group_by(design) |>
+  summarise(
+    mean = mean(N, na.rm = TRUE),
+    median = median(N, na.rm = TRUE),
+    q25 = quantile(N, 0.25, type = 7, na.rm = TRUE),
+    q75 = quantile(N, 0.75, type = 7, na.rm = TRUE),
+    n25_species = sort(N)[25],
+    n75_species = sort(N)[75]
+  ) |>
+  pivot_longer(-design, names_to = "statistic", values_to = "value") |>
+  pivot_wider(names_from = design, values_from = value)
+```
+
+
+
+```{r}
+psi_nieuw |>
+  ggplot(aes(x = psi, col = new_stratum)) +
+  stat_ecdf()
+
+psi_nieuw |>
+  ggplot(aes(x = 285 / p_prop, col = new_stratum)) +
+  stat_ecdf() +
+  ggtitle("285/p_prop")
+
+psi_nieuw |>
+  ggplot(aes(x = 285 / p_equal, col = new_stratum)) +
+  stat_ecdf() +
+  ggtitle("285/p_equal")
+```
+
+
+
+Dus we doen dezelfde berekening met de oude strata, is dit betrouwbaarder dan de nieuwe strata te gebruiken?
+
+```{r}
+psi_oud_all <- psi_oud |>
+  left_join(
+    data.frame(
+      stratum_old = names(designs_oud$`Oud  frame-proportioneel`),
+      a_s = designs_oud$`Oud  frame-proportioneel`
+    ),
+    by = "stratum_old"
+  ) |>
+  mutate(p_prop = a_s * psi, p_equal = 1 / 6 * psi) |>
+  group_by(species) |>
+  summarise(N_prop = 285 / sum(p_prop), N_equal = 285 / sum(p_equal)) |>
+  pivot_longer(
+    cols = c(N_prop, N_equal),
+    names_to = "design",
+    values_to = "N"
+  ) |>
+  group_by(design) |>
+  summarise(
+    mean = mean(N, na.rm = TRUE),
+    median = median(N, na.rm = TRUE),
+    q25 = quantile(N, 0.25, type = 7, na.rm = TRUE),
+    q75 = quantile(N, 0.75, type = 7, na.rm = TRUE),
+    n25_species = sort(N)[25],
+    n75_species = sort(N)[75]
+  ) |>
+  pivot_longer(-design, names_to = "statistic", values_to = "value") |>
+  pivot_wider(names_from = design, values_from = value)
+```
+
+# vergelijking designs
+
+
+```{r}
+library(dplyr)
+library(purrr)
+library(gt)
+
+# 1. Join into wide format
+table_data <- list(
+  "Nieuw (all)" = psi_nieuw_all,
+  "Nieuw (no moeras)" = psi_nieuw_no_moeras,
+  "Oud (all)" = psi_oud_all
+) |>
+  imap(~ rename_with(.x, function(col) paste0(.y, "___", col), -statistic)) |>
+  reduce(left_join, by = "statistic")
+
+# 2. Render styled table
+table_data |>
+  gt(rowname_col = "statistic") |>
+  tab_spanner(
+    label = "Nieuw (all)",
+    id = "sp_nieuw_all",
+    columns = starts_with("Nieuw (all)")
+  ) |>
+  tab_spanner(
+    label = "Nieuw (no moeras)",
+    id = "sp_nieuw_no_moeras",
+    columns = starts_with("Nieuw (no moeras)")
+  ) |>
+  tab_spanner(
+    label = "Oud (all)",
+    id = "sp_oud_all",
+    columns = starts_with("Oud (all)")
+  ) |>
+  cols_label(
+    ends_with("N_equal") ~ "N_equal",
+    ends_with("N_prop") ~ "N_prop"
+  ) |>
+  fmt_number(
+    columns = everything(),
+    decimals = 1
+  ) |>
+  tab_header(
+    title = md("**Vergelijking designs**"),
+    subtitle = "Statistische spreiding per design en allocatie-methode"
+  ) |>
+  opt_align_table_header(align = "left") |>
+  opt_row_striping() |>
+
+  # Group dividers: Spanners, column headers, and data cells
+  tab_style(
+    style = cell_borders(sides = "left", color = "#94a3b8", weight = px(2)),
+    locations = list(
+      cells_column_spanners(spanners = c("sp_nieuw_no_moeras", "sp_oud_all")),
+      cells_column_labels(
+        columns = c("Nieuw (no moeras)___N_equal", "Oud (all)___N_equal")
+      ),
+      cells_body(
+        columns = c("Nieuw (no moeras)___N_equal", "Oud (all)___N_equal")
+      )
+    )
+  ) |>
+
+  # Thin dividers between N_equal and N_prop
+  tab_style(
+    style = cell_borders(sides = "right", color = "#e2e8f0", weight = px(1)),
+    locations = cells_body()
+  ) |>
+
+  # Highlight median row
+  tab_style(
+    style = list(
+      cell_fill(color = "#dbeafe"),
+      cell_text(weight = "bold", color = "#1e40af")
+    ),
+    locations = list(
+      cells_body(rows = statistic == "median"),
+      cells_stub(rows = statistic == "median")
+    )
+  ) |>
+  tab_options(
+    table.border.top.style = "none",
+    column_labels.font.weight = "bold",
+    table.font.size = px(13),
+    row.striping.background_color = "#f1f5f9",
+    data_row.padding = px(6),
+    column_labels.padding = px(8)
+  )
+```
+
+# berekening per stratum
+
+Identiek als erboven maar per stratum
+
+```{r}
+klassen <- setdiff(
+  rst$new_stratum,
+  c("water", "estuarium", "getijdensgebied/overgangswater")
+) # land-kader
+a_prop <- rst %>%
+  filter(new_stratum %in% klassen) %>%
+  {
+    setNames(.$cellen / sum(.$cellen), .$new_stratum)
+  } # oppervlakte-aandelen (excl. water)
+
+psi_nieuw <- rel %>%
+  inner_join(
+    pts %>% distinct(point, new_stratum) %>% filter(!is.na(new_stratum)),
+    by = "point"
+  ) %>%
+  distinct(species, new_stratum, point) %>%
+  count(species, new_stratum, name = "n_relevant") %>%
+  left_join(effort_nieuw, by = "new_stratum") %>%
+  mutate(psi = n_relevant / n_punten)
+
+psi_nieuw$a_s <- a_prop[psi_nieuw$new_stratum]
+psi_nieuw <- na.omit(psi_nieuw)
+psi_nieuw$p_prop <- psi_nieuw$psi * psi_nieuw$a_s
+psi_nieuw$p_equal <- psi_nieuw$psi * 1 / 8
+
+resultaat_perstratum <- psi_nieuw
+resultaat_perstratum$NodigeN <- (285 / length(klassen)) / psi_nieuw$psi
+
+resultaat_perstratum |>
+  ggplot(aes(x = log(NodigeN), y = new_stratum, col = new_stratum)) +
+  geom_boxplot() +
+  theme(legend.position = "none")
+
+resultaat_perstratum |>
+  ggplot(aes(x = (NodigeN), col = new_stratum)) +
+  stat_ecdf() +
+  theme(legend.position = "bottom") +
+  xlim(c(0, 2000)) +
+  ggtitle("N nodig om 285/8 effectieve samples te verkrijgen")
+```
+
+Voor de zeldzame strata hebben we minder N nodig aangezien die een hogere psi hebben. 
+
+Nu dit geeft waarschijnlijk een vertekend beeld aangezien we werken met de nieuwe punten. 
