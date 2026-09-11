@@ -33,8 +33,12 @@ theme_set(theme_minimal(base_size = 11))
 f <- function(x) file.path(params$data_dir, x)
 
 pts <- readRDS(
-  ("C:/Users/stijn_vandenbulcke/Documents/abv/abv-steekproefkader/source/Nieuwe map/PowerAnalyse/Data/abv2_point_classes.rds")
-) # point, square, stratum_old, new_stratum
+  "C:/Users/stijn_vandenbulcke/Documents/abv/abv-steekproefkader/source/Nieuwe map/PowerAnalyse/Data/abv2_point_classes.rds"
+)
+pts2 <- readRDS(
+  "C:/Users/stijn_vandenbulcke/Documents/abv/abv-steekproefkader/source/Nieuwe map/PowerAnalyse/Data/abv2_point_classes_road.rds"
+)
+# point, square, stratum_old, new_stratum
 rel <- readRDS(
   ("C:/Users/stijn_vandenbulcke/Documents/abv/abv-steekproefkader/source/Nieuwe map/PowerAnalyse/Data/abv2_relevance.rds")
 ) # species, point  (relevante punten per soort)
@@ -53,20 +57,20 @@ oud_frame <- c(
 )
 ```
 
-pts bevat de punten, squares, oude stratum, nieuwe stratum en longitude+latitude
+Dataframe  "pts" bevat de punten, squares, oude stratum, nieuwe stratum en longitude+latitude
 ```{r}
-head(pts)
+head(pts) |> kable()
 ```
 
-rst bevat hoeveel 10x10m pixels ieder stratum bevat in vlaanderen
+Dataframe "rst" bevat hoeveel 10x10m pixels ieder stratum bevat in vlaanderen
 ```{r}
-head(rst)
+head(rst) |> kable()
 ```
 
 
-rel bevat de locaties van iedere species, genomen uit het dataframe van de modellen (hierdoor mogelijks vertekening van alle punten?)
+Dataframe "rel" bevat de locaties van iedere species, genomen uit het dataframe van de modellen
 ```{r}
-head(rel)
+head(rel) |> kable()
 ```
 
 ## methodologie
@@ -531,3 +535,62 @@ resultaat_perstratum |>
 Voor de zeldzame strata hebben we minder N nodig aangezien die een hogere psi hebben. 
 
 Nu dit geeft waarschijnlijk een vertekend beeld aangezien we werken met de nieuwe punten. 
+
+# patch analysis per stratum
+
+Hebben we genoeg unieke locaties om te samplen per stratum?
+We berekenen de patches voor duinen/heide en moeras, de andere strata hebben we genoeg locaties. 
+
+```{r}
+patch_freq_df <- read.csv("./data/patch_freq_csv.txt")
+
+patch_freq_df |>
+  group_by(stratum) |>
+  summarise(
+    n_patches = n(),
+    q25 = quantile(count, 0.25),
+    mean_size = mean(count),
+    median_size = median(count),
+    q75 = quantile(count, 0.75),
+    max = max(count)
+  )
+```
+
+Voor moeras is dit beperkend maar voor duinen/heide hebben we er waarschijnlijk genoeg. 
+
+Indien we het wegennetwerk met een buffer bekijken, is dit nog minder ideaal.
+
+# wegennetwerk
+
+```{r}
+
+strata <- 1:11
+names(strata) <- c(
+  "bebouwd",
+  "bebouwd_groen",
+  "water",
+  "akker",
+  "grasland",
+  "bos",
+  "duinen/heide",
+  "moeras",
+  "estuarium",
+  "getijdensgebied/overgangswater",
+  "gemengd"
+)
+masked_map_nobuffer <- freq(rast("./data/final_masked_map_nobuffer.tif"))
+masked_map <- freq(rast("./data/final_masked_map.tif"))
+
+masked_map$value <- names(strata)[(masked_map)$value]
+masked_map$type <- "roads small buffer"
+masked_map_nobuffer$value <- names(strata)[(masked_map_nobuffer)$value]
+masked_map_nobuffer$type <- "roads no buffer"
+```
+
+```{r}
+masked_map |> kable(
+```
+
+```{r}
+masked_map_nobuffer |> kable(
+```
