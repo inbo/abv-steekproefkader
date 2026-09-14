@@ -1,0 +1,397 @@
+---
+title: "ABV2.0 Simple Power analysis"
+format: html
+execute:
+  warning: false
+  message: false
+---
+
+
+# Samenvatting
+Dit rapport voert een power analyse uit op basis van simulaties. We genereren telgegevens met een Poisson generalized linear mixed model (GLMM)
+
+# Introductie
+
+Het project "Algemene Broedvogelmonitoring Vlaanderen", of ABV is een initiatief van het instituut voor Natuur- en Bosonderzoek (INBO) en Natuurpunt Studie in samenwerking met de lokale vogelwerkgroepen. De doelstelling van het project is het beschrijven van de veranderingen van in aantallen van een set van ongeveer 80 algemene broedvogelsoorten in Vlaanderen, dit in functie van beleid.
+
+# ABV methodologie
+
+De steekproefeenheid bestaat uit een hok van 1 x 1 km. Binnen dit hok worden zes punten vastgelegd in een vaste. Indien de punten in de praktijk niet bereikbaar zijn, mag de waarnemer ze verplaatsen naar het dichtstbijzijnde bereikbare punt. De waarnemer documenteert deze wijziging zodat we in de toekomst steeds op dezelfde punten blijven waarnemen. Bij de start van het meetnet hebben we de hokken opgedeeld in een aantal strata. De regels zijn gebaseerd op het oppervlakteaandeel van een bepaald landgebruik op basis van de Biologische Waarderingkaart (Vriens et al., 2011).
+
+ - Landbouw: minstens 80% landbouw. 6311 hokken.
+ - Urbaan: minstens 80% urbaan. 416 hokken.
+ - Bos: minstens 80% bos. 319 hokken.
+ - Suburbaan: minstens 80% suburbaan. 201 hokken.
+ - Heide en duin: minstens 20% heide of duin. 199 hokken.
+ - Moeras en water: minstens 20% moeras en water. 137 hokken.
+
+Uit deze set trekken we een aselecte, gestratificeerde steekproef van 1200 hokken waarbij zeldzamere habitats overbemonsterd worden. We streven er naar om jaarlijks 300 hokken te bemonsteren in een driejarige rotatie. De waarnemers mochten in het eerste jaar 300 hokken kiezen uit de set van 1200. Deze set van hokken komen in principe opnieuw aan bod in jaren 4, 7, 10, … In jaar 2 kiezen ze 300 hokken uit de overgebleven 900 hokken. Deze set komt opnieuw aan bod in jaren 5, 8, 11, … Tenslotte kiezen de waarnemers in het derde jaar een laatste set van 300 hokken uit de laatste 900 hokken. Deze set hokken bemonsteren we in de jaren 3, 6, 9, 12, …
+
+In het jaar dat we een hok bemonsteren zal de waarnemer het hok in drie periodes bezoeken: 1 maart - 15 april, 16 april - 31 mei, 1 juni - 15 juli. Tussen twee opeenvolgende bezoeken moet er minstens twee weken liggen. Alle meetpunten van een hok worden op dezelfde dag onderzocht tussen zonsopgang en 4 uur na zonsopgang. Op elk meetpunt telt de waarnemer gedurende 5 minuten het aantal volwassen vogels per soort. Overvliegende groepen vogels worden hierbij niet meegeteld.
+
+# ABV 2.0 methodologie
+
+Door het gebruik van de hokken in de vorige methodologie wordt slechts X percent van het Vlaamse grondgebied effect in overweging genomen om te samplen. Dit si dus niet volledig representatief voor Vlaanderen. 
+
+De hokken voor de zeldzamere strata zoals "Heide en duin" en "Moeras en water" hanteren een threshold van 20% ten opzichte van de 80% van de andere strata. Dit was nodig aangezien we geen/amper (todo: check aantal ruwweg) UTM 1 x 1 km hokken hebben in vlaanderen van deze strata. Er worden ook zes punten per hok gemeten, maar deze zes punten kunnnen sterk verschillen in de directe omgeving.
+
+Door bovenstaande punten stellen we het volgende voor:
+
+Een focal window van radius GaussianRadius 100m rond 100m met een gaussian distributie met sigma X als weights. We lopen dit over iedere UTM 10 x 10m pixels van FLEA kaart (todo: link).
+Nieuwe strata, vanuit de FLEA kaart ook, samengevoegd.
+Rechtstreeks van hieruit samplen.
+
+Design houden we hetzelfde, rotatie van de locaties iedere drie jaar.
+
+Samplen vanuit de wegen want gemakkelijker voor de vrijwilligers.
+
+# Hokvariantie vergelijking
+
+```{r}
+source("./source/AnalysisFunctions.R")
+```
+
+INLA model:
+
+count ~ 0 + stratum + cyear:stratum + period + f(square, model = "iid", 
+    hyper = list(theta = list(prior = "pc.prec", param = c(1, 
+        0.01)))) + f(point, model = "iid", hyper = list(theta = list(prior = "pc.prec", 
+    param = c(1, 0.01))))
+
+
+```{r}
+vars_df <- readRDS("Data/VogelModelParameters.rds")
+(as_tibble(vars_df)[c(
+  "var_square",
+  "var_point",
+  "Bos",
+  "Heide.en.duin",
+  "Landbouw",
+  "Moeras.en.water",
+  "Suburbaan",
+  "Urbaan",
+  "species"
+)])
+```
+
+```{r}
+library(ggplot2)
+library(GGally)
+
+# Select variables
+selected_vars <- c(
+  "Bos",
+  "Heide.en.duin",
+  "Landbouw",
+  "Moeras.en.water",
+  "Suburbaan",
+  "Urbaan"
+)
+
+# Create plot
+ggpairs(
+  vars_df[, selected_vars],
+  lower = list(
+    continuous = wrap(
+      "smooth_loess",
+      alpha = 0.4,
+      size = 1.2,
+      color = "#2b5c8f"
+    )
+  ),
+  diag = list(continuous = wrap("densityDiag", fill = "#5B9BD5", alpha = 0.5)),
+  upper = list(continuous = wrap("cor", size = 4.5, color = "black"))
+) +
+  theme_minimal(base_size = 11) +
+  theme(
+    strip.text = element_text(face = "bold", size = 9),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 7)
+  )
+```
+
+```{r}
+#| fig.cap: "Verdeling van proportie variantiecomponenten (hok vs. punt) per vogelsoort."
+#| fig.height: 12
+
+vars_df |>
+  mutate(species = fct_reorder(species, var_square / var_point)) |>
+  pivot_longer(
+    cols = c(var_square, var_point),
+    names_to = "var",
+    values_to = "value"
+  ) |>
+  ggplot(aes(x = value, y = species, fill = var)) +
+  geom_col(position = "fill") +
+  theme_bw() +
+  labs(
+    x = "Proportion of Variance",
+    y = "Species",
+    fill = "Variance Type"
+  )
+```
+
+Hoe is de totale ruimtelijke variantie verdeeld tussen het hok ($\sigma^2_{\text{hok}}$) en het telpunt ($\sigma^2_{\text{punt}}$).
+
+```{r}
+#| fig.cap: "Verdeling van variantiecomponenten (hok vs. punt) per vogelsoort."
+#| fig.height: 12
+
+vars_df |>
+  mutate(species = fct_reorder(species, var_square + var_point)) |>
+  pivot_longer(
+    cols = c(var_square, var_point),
+    names_to = "var",
+    values_to = "value"
+  ) |>
+  ggplot(aes(x = value, y = species, fill = var)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  labs(
+    x = "Variantie",
+    y = "Species",
+    fill = "Variance Type"
+  )
+```
+
+
+
+
+```{r variance-analysis}
+#| fig.cap: "Verdeling van variantiecomponenten (hok vs. punt) per vogelsoort."
+#| fig.height: 6
+
+vars_df <- readRDS("Data/VogelModelParameters.rds")
+
+# Samenvattende boxplot van variantiecomponenten over alle soorten
+vars_df |>
+  pivot_longer(
+    cols = c(var_square, var_point),
+    names_to = "var_type",
+    values_to = "variance"
+  ) |>
+  mutate(
+    var_type = ifelse(
+      var_type == "var_square",
+      "Hokvariantie (u_square)",
+      "Puntvariantie (v_point)"
+    )
+  ) |>
+  ggplot(aes(x = var_type, y = variance, fill = var_type)) +
+  geom_boxplot(alpha = 0.7, outlier.alpha = 0.5) +
+  scale_fill_manual(values = c("#00BFC4", "#F8766D")) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  labs(
+    x = "Variantiecomponent",
+    y = "Geschatte Variantie (log-schaal)",
+    title = "Spreiding van hok- en puntvariantie over alle soorten"
+  )
+```
+
+Voor de meeste soorten de variabiliteit tussen punten over het algemeen kleiner is dan de variabiliteit tussen de hokken.
+
+# power analyse
+
+In de analyses van ABV wordt het volgende INLA model gebruikt.
+\begin{align}
+\log(\lambda) &= \alpha_{\text{stratum}} + \beta_{\text{stratum}} \cdot \text{jaar}_i + \gamma_{\text{periode}} + u_{\text{square}} + v_{\text{point}} \\
+u &\sim \mathcal{N}(0, \sigma^2_{\text{square}}) \\
+v &\sim \mathcal{N}(0, \sigma^2_{\text{point}})
+\end{align}
+
+Voor de poweranalyse simuleren we data met een vereenvoudigd trendmodel per locatie $i$ over tijd $t$:
+
+\begin{align}
+\log(\lambda_{it}) &= \beta_0 + \beta_1 \cdot \text{jaar}_t + b_i \\
+b_i &\sim \mathcal{N}(0, \sigma^2)
+\end{align}
+
+
+Hierin worden de parameters als volgt geïnterpreteerd:
+
+- Jaarlijkse trend ($\beta_1$): Gebaseerd op een streefwaarde om een populatieverandering van 24% over 24 jaar te kunnen detecteren:
+  $$\beta_1 = \frac{\log(1.24)}{23} \approx 0.00935$$
+
+- Gecombineerde ruimtelijke variantie ($\sigma$): De hok- en puntvariabiliteit worden samengevoegd tot 1 random effect per meetlocatie:
+  $$\sigma = \sqrt{\sigma^2_{\text{hok}} + \sigma^2_{\text{punt}}}$$
+
+- Baseline-intercept ($\beta_0$): De verwachte log-dichtheid op het referentietijdstip ($t=0$).
+
+
+
+## Analytische Steekproefgrootte (Signorini Formule)
+
+Als eerste benadering gebruiken we de Signorini-formule voor Poisson-regressie, aangepast voor de marginale verwachtingswaarde bij aanwezigheid van een log-normaal random effect:
+
+\begin{equation}
+N = \frac{\left(Z_{\alpha/2} + Z_{\text{power}}\right)^2}{n \cdot \bar{\lambda}_{\text{marg}} \cdot \beta_1^2 \cdot V_x}
+\end{equation}
+
+waarbij de marginale gemiddelde dichtheid $\bar{\lambda}_{\text{marg}}$ wordt gecorrigeerd voor $\sigma^2$:
+
+\begin{equation}
+\bar{\lambda}_{\text{marg}} = \frac{1}{n}\sum_{k=1}^{n} \exp\!\left(\beta_0 + \beta_1 t_k + \frac{\sigma^2}{2}\right) \quad \text{en} \quad V_x = \text{Var}(t_1, \dots, t_n)
+\end{equation}
+
+
+
+```{r}
+#| fig.cap: "Berekende benodigde steekproefgrootte (N) per stratum over alle soorten."
+#| fig.height: 5
+beta_1 <- 0.009352669
+species_list <- vector(mode = "list", length = length(vars_df$species))
+names(species_list) <- vars_df$species
+for (species in vars_df$species) {
+  tmp <- vars_df[vars_df$species == species, ]
+  sigma <- tmp[["sigma"]]
+  species_list[[species]] <- sapply(
+    c(
+      "Bos",
+      "Heide.en.duin",
+      "Landbouw",
+      "Moeras.en.water",
+      "Suburbaan",
+      "Urbaan"
+    ),
+    function(stratum) {
+      beta_0 <- tmp[[stratum]]
+      if (!is.na(beta_0)) {
+        N <- signorini_marginal(
+          phi = 1,
+          beta_0 = beta_0,
+          beta_1 = beta_1,
+          sampled_years = c(0, 3, 6, 9, 12, 15, 18, 21),
+          alpha = 0.1,
+          power = 0.9,
+          sigma = sigma
+        )
+      } else {
+        N <- NA
+      }
+      return(N)
+    }
+  )
+}
+
+
+species_df <- as.data.frame(do.call(rbind, species_list))
+strata <- colnames(species_df)
+species_df$species <- factor(
+  rownames(species_df),
+  levels = rownames(species_df)[order(rowMeans(species_df, na.rm = TRUE))]
+)
+species_df |>
+  as.data.frame() |>
+  pivot_longer(cols = strata, names_to = "stratum", values_to = "N") |>
+  ggplot(aes(x = species, y = N, col = stratum, group = stratum)) +
+  geom_point() +
+  coord_cartesian(ylim = c(0, 1200)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+species_df |>
+  as.data.frame() |>
+  pivot_longer(cols = strata, names_to = "stratum", values_to = "N") |>
+  ggplot(aes(x = stratum, y = N, fill = stratum)) +
+  geom_boxplot() +
+  ylim(c(0, 2000)) +
+  theme_bw()
+```
+
+Dit is conservatiever dan de simulaties, zoals we hieronder zullen zien. Maar geeft alvast een initieel beeld van de nodige sampling last. We zien ook dat het verschil tussen de strata niet zo hoog ligt en dus mogelijks geen aanpassingen zullen nodig hebben.
+
+
+```{r overall-signorini}
+average_est <- mean(colMeans(vars_df[, strata], na.rm = TRUE))
+mean_sigma <- mean(vars_df$sigma, na.rm = TRUE)
+
+n_signorini <- signorini_marginal(
+  phi = 1,
+  beta_0 = average_est,
+  beta_1 = 0.00935,
+  sampled_years = c(0, 3, 6, 9, 12, 15, 18, 21),
+  alpha = 0.1,
+  power = 0.9,
+  sigma = mean_sigma
+)
+print(n_signorini)
+```
+
+```{r overall-signorini}
+median_est <- median(colMeans(vars_df[, strata], na.rm = TRUE))
+median_sigma <- median(vars_df$sigma, na.rm = TRUE)
+
+n_signorini_median_estimates <- signorini_marginal(
+  phi = 1,
+  beta_0 = median_est,
+  beta_1 = 0.00935,
+  sampled_years = c(0, 3, 6, 9, 12, 15, 18, 21),
+  alpha = 0.1,
+  power = 0.9,
+  sigma = median_sigma
+)
+print(n_signorini_median_estimates)
+```
+
+Wanneer we rekenen met de gemiddelde parameters over alle soorten ($\bar{\beta}_0$ en $\bar{\sigma}$):
+
+- Signorini geeft een schatting van `r round(n_signorini)` unieke locaties
+- simulaties tonen aan dat 284 unieke locaties voldoen (afgerond naar 285 locaties voor een 3-jarige rotatie) volstaan om een power van $90\%$ te behalen bij $\alpha = 0.1$.
+- Dit komt neer op 95 unieke locaties per per jaar
+
+
+![Power schatting gemiddelde vogel](FinalPower0109meanbetameansigma.png)
+
+# occupancy rates van de vogels 
+
+Effectieve haalbaarheid hangt af van de aantal locaties waar de vogels effectief gezien worden dus het aantal nodig locaties maal occupancy rate (maar wat met zero inflation?)
+
+# wegennetwerk analyse
+
+We bekijken de sampling rond 100m, 300m en 500m van het wegennetwerk om te zien of het mogelijk is vanuit deze afstand een representatieve sampling te verkrijgen.
+
+![Power schatting gemiddelde vogel](plot_capture_flanders.png)
+
+
+
+```{r}
+flanders_summary <- read_csv("./RoadBufferBias/flanders_summary_nonwater.csv")
+flanders_summary[, c(
+  "habitat_clean",
+  "count_all",
+  "prop_all",
+  "count_buffer",
+  "prop_buffer",
+  "buffer_dist"
+)] |>
+  dplyr::filter(buffer_dist == "100m")
+```
+
+```{r}
+flanders_summary[, c(
+  "habitat_clean",
+  "count_all",
+  "prop_all",
+  "count_buffer",
+  "prop_buffer",
+  "buffer_dist"
+)] |>
+  dplyr::filter(buffer_dist == "300m")
+```
+
+
+```{r}
+flanders_summary[, c(
+  "habitat_clean",
+  "count_all",
+  "prop_all",
+  "count_buffer",
+  "prop_buffer",
+  "buffer_dist"
+)] |>
+  dplyr::filter(buffer_dist == "500m")
+```
+
+
+We kunnen ook kijken naar de patches van 

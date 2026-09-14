@@ -37,3 +37,4 @@ libs
 output
 renv/library
 tests/testthat/_problems
+data/
